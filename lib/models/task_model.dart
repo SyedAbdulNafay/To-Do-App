@@ -16,8 +16,8 @@ class TaskModel {
 
   static Future<TaskModel> createTask(String task) async {
     Map<String, dynamic> data = {"task": task};
-    print("task created");
-    var response = await http.post(Uri.parse(AppUrl.postUrl), body: jsonEncode(data));
+    var response = await http.post(Uri.parse(AppUrl.postUrl),
+        headers: {"Content-Type": "application/json"}, body: jsonEncode(data));
     print('response code: ${response.statusCode}');
     if (response.statusCode == 201) {
       return TaskModel.fromJson(jsonDecode(response.body));
@@ -26,3 +26,4 @@ class TaskModel {
     }
   }
 }
+

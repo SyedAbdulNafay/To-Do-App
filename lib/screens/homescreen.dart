@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:to_do_app/models/task_model.dart';
+import 'package:to_do_app/services/tasks_services.dart';
 import 'package:to_do_app/services/utilities/app_url.dart';
 import 'package:http/http.dart' as http;
 
@@ -12,13 +13,13 @@ class ToDoList extends StatefulWidget {
   State<ToDoList> createState() => _ToDoListState();
 }
 
-List<TaskModel> tasksData = [];
-
 class _ToDoListState extends State<ToDoList> {
   List tasks = [];
+  List<TaskModel> tasksData = [];
   final TextEditingController _taskController = TextEditingController();
   final TextEditingController _taskEditController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
+  final _textKey = GlobalKey<FormState>();
+  final _editKey = GlobalKey<FormState>();
 
   @override
   void initState() {
@@ -26,17 +27,12 @@ class _ToDoListState extends State<ToDoList> {
   }
 
   Future<List<TaskModel>> getApi() async {
-    print('get api called');
     var response = await http.get(Uri.parse(AppUrl.postUrl));
-    print('response body: ${response.body}');
     if (response.statusCode == 200) {
       List<dynamic> json = jsonDecode(response.body);
-      print("json list: ${json}");
       for (dynamic map in json) {
         tasksData.add(TaskModel.fromJson(Map<String, dynamic>.from(map)));
       }
-      print(tasksData[0].task);
-      print('passed');
       return tasksData;
     } else {
       throw Exception("Error");
@@ -50,7 +46,7 @@ class _ToDoListState extends State<ToDoList> {
         return AlertDialog(
           title: const Text("Add task"),
           content: Form(
-            key: _formKey,
+            key: _textKey,
             child: TextFormField(
               validator: (value) {
                 if (value!.isEmpty) {
@@ -66,17 +62,12 @@ class _ToDoListState extends State<ToDoList> {
           actions: [
             TextButton(
                 onPressed: () async {
-                  if (_formKey.currentState!.validate()) {
+                  if (_textKey.currentState!.validate()) {
                     try {
-                      final TaskModel? newTask =
-                          await TaskModel.createTask(_taskController.text);
-                      if (newTask != null) {
-                        setState(() {
-                          tasksData.add(newTask);
-                        });
-                        _taskController.clear();
-                        Navigator.pop(context);
-                      }
+                      await TaskServices.postTaskApi(_taskController.text);
+                      tasksData.clear();
+                      setState(() {});
+                      Navigator.pop(context);
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                         content: Text("Failed to add task: $e"),
@@ -94,27 +85,46 @@ class _ToDoListState extends State<ToDoList> {
   }
 
   void _showEditDialog(BuildContext context, int index) {
-    _taskEditController.text = tasks[index];
+    _taskEditController.text = tasksData[index].task ?? "";
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text("Edit task"),
-          actions: [
-            TextField(
+          content: Form(
+            key: _editKey,
+            child: TextFormField(
+              validator: (value) {
+                if (value!.isEmpty) {
+                  return "Enter task";
+                } else {
+                  return null;
+                }
+              },
               controller: _taskEditController,
-              decoration: InputDecoration(
-                  labelText: "Task",
-                  suffixIcon: IconButton(
-                      onPressed: () {
-                        setState(() {
-                          tasks[index] = _taskEditController.text;
-                          _taskEditController.clear();
-                          Navigator.pop(context);
-                        });
-                      },
-                      icon: const Icon(Icons.check))),
-            )
+              decoration: const InputDecoration(labelText: "Task"),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () async {
+                  if (_editKey.currentState!.validate()) {
+                    try {
+                      Navigator.pop(context);
+                      await TaskServices.updateTaskApi(
+                          tasksData[index].id!, _taskEditController.text);
+                      tasksData.clear();
+                      setState(() {});
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text("Failed to update task: $e"),
+                      ));
+                    }
+                  }
+                },
+                child: const Center(
+                  child: Text("Update"),
+                ))
           ],
         );
       },
@@ -140,7 +150,7 @@ class _ToDoListState extends State<ToDoList> {
                 children: [
                   Expanded(
                     child: snapshot.data!.isEmpty
-                        ? Center(child: Text("No tasks"))
+                        ? const Center(child: Text("No tasks"))
                         : ListView.builder(
                             itemCount: snapshot.data!.length,
                             itemBuilder: ((context, index) {
@@ -155,15 +165,16 @@ class _ToDoListState extends State<ToDoList> {
                                       onPressed: () {
                                         _showEditDialog(context, index);
                                       },
-                                      icon: Icon(Icons.edit),
+                                      icon: const Icon(Icons.edit),
                                     ),
                                     IconButton(
                                       onPressed: () {
-                                        setState(() {
-                                          tasks.removeAt(index);
-                                        });
+                                        TaskServices.deleteTaskApi(
+                                            snapshot.data![index].id!);
+                                        tasksData.clear();
+                                        setState(() {});
                                       },
-                                      icon: Icon(Icons.delete),
+                                      icon: const Icon(Icons.delete),
                                     ),
                                   ],
                                 ),
@@ -174,15 +185,15 @@ class _ToDoListState extends State<ToDoList> {
                 ],
               );
             } else {
-              return Center(child: Text("No data available"));
+              return const Center(child: Text("No data available"));
             }
           } else {
-            return Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator());
           }
         },
       ),
       floatingActionButton: FloatingActionButton(
-          onPressed: () {
+          onPressed: () async {
             _showAddDialog(context);
           },
           child: const Icon(Icons.add)),
